@@ -1,41 +1,24 @@
 FROM dunglas/frankenphp AS base
 
-# Instalar dependencias del sistema y extensiones de PHP necesarias
+ADD --chmod=0755 https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
-  bash \
   git \
   openssh-client \
-  libpng-dev \
-  libjpeg62-turbo-dev \
-  libfreetype6-dev \
-  zip \
-  libzip-dev \
-  libicu-dev \
-  autoconf \
-  dpkg-dev \
-  file \
-  g++ \
-  gcc \
-  libc-dev \
-  make \
-  pkg-config \
-  re2c \
-  && rm -rf /var/lib/apt/lists/*
+  unzip \
+  && rm -rf /var/lib/apt/lists/* \
+  && install-php-extensions gd pdo_mysql zip intl pcntl opcache redis
 
-RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
-  && docker-php-ext-install -j$(nproc) gd pdo_mysql zip intl pcntl opcache \
-  && pecl install redis \
-  && docker-php-ext-enable redis
-
-# Instalar Composer
 COPY --from=composer:2.7 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /app
 
 # --- Stage de Desarrollo / Construcción ---
 FROM base AS builder
+COPY composer.json composer.lock ./
+RUN composer install --no-interaction --optimize-autoloader --no-dev --no-scripts
 COPY . .
-RUN composer install --no-interaction --optimize-autoloader --no-dev
+RUN composer dump-autoload --optimize --no-dev
 
 # --- Stage de Producción ---
 FROM base AS production
