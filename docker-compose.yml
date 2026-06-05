@@ -1,0 +1,23 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: test-frankenphp-octane:latest
+    environment:
+      - APP_ENV=production
+      - APP_DEBUG=false
+      - OCTANE_SERVER=frankenphp
+    volumes:
+      - ./.env:/app/.env
+      - storage_data:/app/storage
+    networks:
+      - dokploy-network # Red interna de Dokploy (se autoconfigura al desplegar)
+
+volumes:
+  storage_data:
+
+networks:
+  dokploy-network:
+    external: true
