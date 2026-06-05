@@ -29,8 +29,6 @@ RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 COPY docker/php/api-optimizations.ini $PHP_INI_DIR/conf.d/
 
 # Configurar variables de entorno de FrankenPHP para Octane
-ENV AUTORELOAD=false
-ENV FRANKENPHP_CONFIG="worker ./public/frankenphp-worker.php"
 ENV PORT=8000
 
 # Exponer el puerto interno que usará Dokploy

@@ -9,8 +9,9 @@ services:
       - APP_ENV=production
       - APP_DEBUG=false
       - OCTANE_SERVER=frankenphp
+      - APP_KEY=${APP_KEY}
+      - APP_URL=${APP_URL:-http://localhost}
     volumes:
-      - ./.env:/app/.env
       - storage_data:/app/storage
     networks:
       - dokploy-network # Red interna de Dokploy (se autoconfigura al desplegar)
