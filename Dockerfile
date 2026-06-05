@@ -1,17 +1,26 @@
 FROM dunglas/frankenphp AS base
 
 # Instalar dependencias del sistema y extensiones de PHP necesarias
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
   bash \
   git \
   openssh-client \
   libpng-dev \
-  libjpeg-turbo-dev \
-  freetype-dev \
+  libjpeg62-turbo-dev \
+  libfreetype6-dev \
   zip \
   libzip-dev \
-  icu-dev \
-  $PHPIZE_DEPS
+  libicu-dev \
+  autoconf \
+  dpkg-dev \
+  file \
+  g++ \
+  gcc \
+  libc-dev \
+  make \
+  pkg-config \
+  re2c \
+  && rm -rf /var/lib/apt/lists/*
 
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
   && docker-php-ext-install -j$(nproc) gd pdo_mysql zip intl pcntl opcache \
