@@ -1,0 +1,24 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: {{PROJECT_NAME}}:latest
+    environment:
+      - APP_ENV=production
+      - APP_DEBUG=false
+      - OCTANE_SERVER=frankenphp
+      - APP_KEY=${APP_KEY}
+      - APP_URL=${APP_URL:-http://localhost}
+    volumes:
+      - storage_data:/app/storage
+    networks:
+      - dokploy-network
+
+volumes:
+  storage_data:
+
+networks:
+  dokploy-network:
+    external: true
