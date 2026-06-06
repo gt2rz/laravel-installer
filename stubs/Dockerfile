@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   openssh-client \
   unzip \
   && rm -rf /var/lib/apt/lists/* \
-  && install-php-extensions gd pdo_pgsql zip intl pcntl opcache redis
+  && install-php-extensions gd {{DB_EXTENSION}} zip intl pcntl opcache redis
 
 COPY --from=composer:2.7 /usr/bin/composer /usr/bin/composer
 

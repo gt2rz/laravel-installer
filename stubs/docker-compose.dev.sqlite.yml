@@ -1,0 +1,29 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+    image: {{PROJECT_NAME}}:dev
+    environment:
+      APP_ENV: local
+      APP_DEBUG: true
+      APP_KEY: ${APP_KEY}
+      APP_URL: ${APP_URL:-http://localhost:8000}
+      OCTANE_SERVER: frankenphp
+      DB_CONNECTION: sqlite
+      CACHE_STORE: database
+      SESSION_DRIVER: file
+      QUEUE_CONNECTION: database
+    volumes:
+      - .:/app
+      - /app/vendor
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    command: php artisan octane:start --server=frankenphp --host=0.0.0.0 --port=8000 --watch
+    networks:
+      - dev-network
+
+networks:
+  dev-network:
+    driver: bridge

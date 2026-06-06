@@ -1,0 +1,23 @@
+services:
+  reverb:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+    image: {{PROJECT_NAME}}:dev
+    environment:
+      APP_ENV: local
+      APP_KEY: ${APP_KEY}
+      REVERB_APP_ID: ${REVERB_APP_ID:-my-app-id}
+      REVERB_APP_KEY: ${REVERB_APP_KEY:-my-app-key}
+      REVERB_APP_SECRET: ${REVERB_APP_SECRET:-my-app-secret}
+      REVERB_HOST: 0.0.0.0
+      REVERB_PORT: ${REVERB_PORT:-8080}
+    volumes:
+      - .:/app
+      - /app/vendor
+    ports:
+      - "${REVERB_PORT_FORWARD:-8080}:8080"
+    command: php artisan reverb:start --host=0.0.0.0 --port=${REVERB_PORT:-8080} --debug
+    networks:
+      - dev-network
