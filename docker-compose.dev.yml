@@ -47,7 +47,11 @@ services:
     ports:
       - "${DB_PORT_FORWARD:-5432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-laravel} -d ${DB_DATABASE:-laravel}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${DB_USERNAME:-laravel} -d ${DB_DATABASE:-laravel}",
+        ]
       interval: 5s
       timeout: 5s
       retries: 5
