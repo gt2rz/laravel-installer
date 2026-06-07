@@ -123,7 +123,7 @@ FRANKENPHP_FLAG=false
 RESEND_FLAG=false
 SENTRY_FLAG=false
 
-GIST_HOOK_URL="https://gist.githubusercontent.com/gt2rz/39499fe47b687c4f2d5df06a5d2eaab8/raw/5a6682231a8109bfb305956c9f2eadfeed3420a1/gistfile1.txt"
+GIST_HOOK_URL="https://gist.githubusercontent.com/gt2rz/39499fe47b687c4f2d5df06a5d2eaab8/raw/06cb67fe3d0a9fc3124ce71f4c57028f261c87db/gistfile1.txt"
 
 # --- Parse args ---
 for arg in "$@"; do
@@ -469,7 +469,7 @@ else
   COMMIT_MSG="chore: initial setup with Octane + Swoole"
 fi
 
-git commit --quiet -m "$COMMIT_MSG"
+git commit --quiet --no-verify -m "$COMMIT_MSG"
 ok "Primer commit creado"
 
 # --- Done ---

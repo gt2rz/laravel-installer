@@ -8,7 +8,7 @@ GIT_CONFIG_USER_NAME = "Miguel Gutiérrez"
 GIT_CONFIG_USER_EMAIL = "gt2rz.dev@gmail.com"
 
 # URL de tu Gist (Reemplaza esto con tu URL Raw real)
-GIST_HOOK_URL = https://gist.githubusercontent.com/gt2rz/39499fe47b687c4f2d5df06a5d2eaab8/raw/5a6682231a8109bfb305956c9f2eadfeed3420a1/gistfile1.txt
+GIST_HOOK_URL = https://gist.githubusercontent.com/gt2rz/39499fe47b687c4f2d5df06a5d2eaab8/raw/06cb67fe3d0a9fc3124ce71f4c57028f261c87db/gistfile1.txt
 
 # Definición de tareas
 .PHONY: help up down restart status logs shell setup migrate fresh seed test install git-config install-hooks tag-list tag-patch tag-minor tag-major tag-push \
