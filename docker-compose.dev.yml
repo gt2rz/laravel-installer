@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: base
-    image: test-frankenphp-octane:dev
+    image: laravel-installer:dev
     environment:
       APP_ENV: local
       APP_DEBUG: true

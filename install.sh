@@ -3,7 +3,7 @@ set -e
 
 # --- Config ---
 GITHUB_USER="gt2rz"
-GITHUB_REPO="test-frankenphp-octane"
+GITHUB_REPO="laravel-installer"
 BRANCH="main"
 BASE_URL="https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/stubs"
 

@@ -18,13 +18,13 @@ El instalador crea un proyecto Laravel nuevo, aplica configuración en .env, des
 ### 1) Ejecutar instalador remoto (wizard interactivo)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/gt2rz/test-frankenphp-octane/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/gt2rz/laravel-installer/main/install.sh | bash
 ```
 
 ### 2) Ejecutar con nombre de proyecto y flags (sin wizard)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/gt2rz/test-frankenphp-octane/main/install.sh \
+curl -fsSL https://raw.githubusercontent.com/gt2rz/laravel-installer/main/install.sh \
 	| bash -s mi-proyecto -- --mysql --api --no-octane
 ```
 
