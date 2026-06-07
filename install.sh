@@ -21,6 +21,8 @@ info() { echo -e "  ${YELLOW}→${NC} $1"; }
 fail() { echo -e "  ${RED}✘ $1${NC}"; exit 1; }
 
 # --- Interactive helpers (funcionan incluso piped desde curl) ---
+
+# prompt: pregunta a usuario con opción de valor por defecto
 ask_input() {
   local prompt="$1" default="$2" answer
   if [ -n "$default" ]; then
@@ -32,6 +34,7 @@ ask_input() {
   echo "${answer:-$default}"
 }
 
+# prompt: pregunta sí/no con opción por defecto (default: y)
 ask_yn() {
   local prompt="$1" default="${2:-y}" hint answer
   [ "$default" = "y" ] && hint="Y/n" || hint="y/N"
@@ -41,6 +44,7 @@ ask_yn() {
   [[ "$answer" =~ ^[Yy] ]]
 }
 
+# prompt: pregunta al usuario con opciones numeradas, devuelve la opción elegida (default: 1)
 ask_choice() {
   local prompt="$1" choice
   shift
@@ -54,6 +58,7 @@ ask_choice() {
   echo "${choice:-1}"
 }
 
+# --- Helpers ---
 db_label() {
   case "$USE_DB" in
     mysql)  echo "MySQL" ;;
@@ -62,22 +67,34 @@ db_label() {
   esac
 }
 
+octane_label() {
+  if [ "$USE_OCTANE" = false ]; then
+    echo "no"
+  elif [ "$USE_FRANKENPHP" = true ]; then
+    echo "sí (FrankenPHP)"
+  else
+    echo "sí (Swoole)"
+  fi
+}
+
 usage() {
   echo ""
   echo -e "${BOLD}Uso:${NC}"
   echo "  bash -s [nombre-proyecto] [opciones]"
   echo ""
   echo -e "${BOLD}Opciones (omiten las preguntas interactivas):${NC}"
-  echo "  --mysql     MySQL en lugar de PostgreSQL"
-  echo "  --sqlite    SQLite en lugar de PostgreSQL"
-  echo "  --no-redis  Sin Redis (drivers: file/database)"
-  echo "  --api       Solo API (Sanctum, sin Blade ni Vite)"
-  echo "  --reverb    Instalar Laravel Reverb (WebSockets)"
-  echo "  --help      Mostrar esta ayuda"
+  echo "  --mysql       MySQL en lugar de PostgreSQL"
+  echo "  --sqlite      SQLite en lugar de PostgreSQL"
+  echo "  --no-redis    Sin Redis (drivers: file/database)"
+  echo "  --api         Solo API (Sanctum, sin Blade ni Vite)"
+  echo "  --reverb      Instalar Laravel Reverb (WebSockets)"
+  echo "  --no-octane   Laravel sin Octane (PHP-CLI estándar)"
+  echo "  --swoole      Octane con Swoole en lugar de FrankenPHP"
+  echo "  --help        Mostrar esta ayuda"
   echo ""
   echo -e "${BOLD}Ejemplo:${NC}"
   echo "  curl -fsSL https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/install.sh \\"
-  echo "    | bash -s mi-api -- --mysql --api"
+  echo "    | bash -s mi-api -- --mysql --api --no-octane"
   echo ""
   exit 0
 }
@@ -87,30 +104,36 @@ USE_DB="pgsql"
 USE_REDIS=true
 API_ONLY=false
 USE_REVERB=false
+USE_OCTANE=true
+USE_FRANKENPHP=true
 PROJECT_NAME=""
 
 DB_FLAG=false
 REDIS_FLAG=false
 API_FLAG=false
 REVERB_FLAG=false
+OCTANE_FLAG=false
+FRANKENPHP_FLAG=false
 
 # --- Parse args ---
 for arg in "$@"; do
   case $arg in
-    --mysql)    USE_DB="mysql";  DB_FLAG=true ;;
-    --sqlite)   USE_DB="sqlite"; DB_FLAG=true ;;
-    --no-redis) USE_REDIS=false; REDIS_FLAG=true ;;
-    --api)      API_ONLY=true;   API_FLAG=true ;;
-    --reverb)   USE_REVERB=true; REVERB_FLAG=true ;;
-    --help|-h)  usage ;;
-    -*)         fail "Opción desconocida: $arg. Usa --help para ver las opciones." ;;
-    *)          [ -z "$PROJECT_NAME" ] && PROJECT_NAME="$arg" ;;
+    --mysql)     USE_DB="mysql";        DB_FLAG=true ;;
+    --sqlite)    USE_DB="sqlite";       DB_FLAG=true ;;
+    --no-redis)  USE_REDIS=false;       REDIS_FLAG=true ;;
+    --api)       API_ONLY=true;         API_FLAG=true ;;
+    --reverb)    USE_REVERB=true;       REVERB_FLAG=true ;;
+    --no-octane) USE_OCTANE=false;      OCTANE_FLAG=true ;;
+    --swoole)    USE_OCTANE=true; USE_FRANKENPHP=false; OCTANE_FLAG=true; FRANKENPHP_FLAG=true ;;
+    --help|-h)   usage ;;
+    -*)          fail "Opción desconocida: $arg. Usa --help para ver las opciones." ;;
+    *)           [ -z "$PROJECT_NAME" ] && PROJECT_NAME="$arg" ;;
   esac
 done
 
 # --- Header ---
 echo ""
-echo -e "${BOLD}  FrankenPHP + Octane Installer${NC}"
+echo -e "${BOLD}  Laravel Installer${NC}"
 echo -e "  ${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
@@ -159,7 +182,19 @@ if [ "$REVERB_FLAG" = false ]; then
   ask_yn "¿Instalar Laravel Reverb? (WebSockets)" "n" && USE_REVERB=true || USE_REVERB=false
 fi
 
-# --- Resolver config ---
+echo ""
+
+if [ "$OCTANE_FLAG" = false ]; then
+  ask_yn "¿Usar Laravel Octane? (workers persistentes, alto rendimiento)" "y" && USE_OCTANE=true || USE_OCTANE=false
+fi
+
+echo ""
+
+if [ "$USE_OCTANE" = true ] && [ "$FRANKENPHP_FLAG" = false ]; then
+  ask_yn "¿Usar FrankenPHP como servidor de Octane?" "y" && USE_FRANKENPHP=true || USE_FRANKENPHP=false
+fi
+
+# --- Resolver config: DB ---
 case "$USE_DB" in
   mysql)
     DB_EXTENSION="pdo_mysql"
@@ -184,6 +219,7 @@ case "$USE_DB" in
     ;;
 esac
 
+# --- Resolver config: Redis ---
 if [ "$USE_REDIS" = true ]; then
   CACHE_STORE="redis"
   SESSION_DRIVER="redis"
@@ -194,6 +230,22 @@ else
   QUEUE_CONNECTION="database"
 fi
 
+# --- Resolver config: Octane / servidor ---
+if [ "$USE_OCTANE" = false ]; then
+  OCTANE_SERVER=""
+  APP_DEV_CMD="php artisan serve --host=0.0.0.0 --port=8000"
+  DOCKERFILE_STUB="Dockerfile.plain"
+elif [ "$USE_FRANKENPHP" = true ]; then
+  OCTANE_SERVER="frankenphp"
+  APP_DEV_CMD="php artisan octane:start --server=frankenphp --host=0.0.0.0 --port=8000 --watch"
+  DOCKERFILE_STUB="Dockerfile"
+else
+  OCTANE_SERVER="swoole"
+  APP_DEV_CMD="php artisan octane:start --server=swoole --host=0.0.0.0 --port=8000 --watch"
+  DOCKERFILE_STUB="Dockerfile.swoole"
+fi
+
+# --- Resolver config: docker-compose dev stub ---
 if [ "$USE_DB" = "sqlite" ] && [ "$USE_REDIS" = true ]; then
   DEV_COMPOSE_STUB="docker-compose.dev.sqlite.redis.yml"
 elif [ "$USE_DB" = "sqlite" ]; then
@@ -216,6 +268,7 @@ printf "  %-18s %s\n" "Base de datos:" "$(db_label)"
 printf "  %-18s %s\n" "Redis:"         "$([ "$USE_REDIS"  = true ] && echo "sí" || echo "no")"
 printf "  %-18s %s\n" "Solo API:"      "$([ "$API_ONLY"   = true ] && echo "sí" || echo "no")"
 printf "  %-18s %s\n" "Reverb:"        "$([ "$USE_REVERB" = true ] && echo "sí" || echo "no")"
+printf "  %-18s %s\n" "Octane:"        "$(octane_label)"
 echo -e "  ${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
@@ -239,10 +292,19 @@ cd "$PROJECT_NAME"
 ok "Proyecto creado"
 
 # --- Octane ---
-info "Instalando Laravel Octane con FrankenPHP..."
-composer require laravel/octane --quiet
-php artisan octane:install --server=frankenphp --no-interaction
-ok "Octane instalado"
+if [ "$USE_OCTANE" = true ]; then
+  if [ "$USE_FRANKENPHP" = true ]; then
+    info "Instalando Laravel Octane con FrankenPHP..."
+    composer require laravel/octane --quiet
+    php artisan octane:install --server=frankenphp --no-interaction
+    ok "Octane + FrankenPHP instalado"
+  else
+    info "Instalando Laravel Octane con Swoole..."
+    composer require laravel/octane --quiet
+    php artisan octane:install --server=swoole --no-interaction
+    ok "Octane + Swoole instalado"
+  fi
+fi
 
 # --- API only ---
 if [ "$API_ONLY" = true ]; then
@@ -272,11 +334,13 @@ download_stub() {
     | sed "s|{{CACHE_STORE}}|$CACHE_STORE|g" \
     | sed "s|{{SESSION_DRIVER}}|$SESSION_DRIVER|g" \
     | sed "s|{{QUEUE_CONNECTION}}|$QUEUE_CONNECTION|g" \
+    | sed "s|{{OCTANE_SERVER}}|$OCTANE_SERVER|g" \
+    | sed "s|{{APP_DEV_CMD}}|$APP_DEV_CMD|g" \
     > "$OUTPUT"
 }
 
 info "Descargando archivos de infraestructura..."
-download_stub "Dockerfile"
+download_stub "$DOCKERFILE_STUB" "Dockerfile"
 ok "Dockerfile"
 
 download_stub "docker-compose.yml"
@@ -305,7 +369,16 @@ ok ".env generado"
 info "Inicializando repositorio..."
 git init --quiet
 git add .
-git commit --quiet -m "chore: initial setup with FrankenPHP + Octane"
+
+if [ "$USE_OCTANE" = false ]; then
+  COMMIT_MSG="chore: initial setup with Laravel"
+elif [ "$USE_FRANKENPHP" = true ]; then
+  COMMIT_MSG="chore: initial setup with FrankenPHP + Octane"
+else
+  COMMIT_MSG="chore: initial setup with Octane + Swoole"
+fi
+
+git commit --quiet -m "$COMMIT_MSG"
 ok "Primer commit creado"
 
 # --- Done ---
