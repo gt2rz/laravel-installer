@@ -90,6 +90,8 @@ usage() {
   echo "  --reverb      Instalar Laravel Reverb (WebSockets)"
   echo "  --no-octane   Laravel sin Octane (PHP-CLI estándar)"
   echo "  --swoole      Octane con Swoole en lugar de FrankenPHP"
+  echo "  --resend      Instalar Resend como proveedor de email"
+  echo "  --sentry      Instalar Sentry para monitoreo de errores"
   echo "  --help        Mostrar esta ayuda"
   echo ""
   echo -e "${BOLD}Ejemplo:${NC}"
@@ -106,7 +108,11 @@ API_ONLY=false
 USE_REVERB=false
 USE_OCTANE=true
 USE_FRANKENPHP=true
+USE_RESEND=false
+USE_SENTRY=false
 PROJECT_NAME=""
+GIT_USER_NAME=""
+GIT_USER_EMAIL=""
 
 DB_FLAG=false
 REDIS_FLAG=false
@@ -114,6 +120,10 @@ API_FLAG=false
 REVERB_FLAG=false
 OCTANE_FLAG=false
 FRANKENPHP_FLAG=false
+RESEND_FLAG=false
+SENTRY_FLAG=false
+
+GIST_HOOK_URL="https://gist.githubusercontent.com/gt2rz/39499fe47b687c4f2d5df06a5d2eaab8/raw/5a6682231a8109bfb305956c9f2eadfeed3420a1/gistfile1.txt"
 
 # --- Parse args ---
 for arg in "$@"; do
@@ -125,6 +135,8 @@ for arg in "$@"; do
     --reverb)    USE_REVERB=true;       REVERB_FLAG=true ;;
     --no-octane) USE_OCTANE=false;      OCTANE_FLAG=true ;;
     --swoole)    USE_OCTANE=true; USE_FRANKENPHP=false; OCTANE_FLAG=true; FRANKENPHP_FLAG=true ;;
+    --resend)    USE_RESEND=true;  RESEND_FLAG=true ;;
+    --sentry)    USE_SENTRY=true;  SENTRY_FLAG=true ;;
     --help|-h)   usage ;;
     -*)          fail "Opción desconocida: $arg. Usa --help para ver las opciones." ;;
     *)           [ -z "$PROJECT_NAME" ] && PROJECT_NAME="$arg" ;;
@@ -193,6 +205,26 @@ echo ""
 if [ "$USE_OCTANE" = true ] && [ "$FRANKENPHP_FLAG" = false ]; then
   ask_yn "¿Usar FrankenPHP como servidor de Octane?" "y" && USE_FRANKENPHP=true || USE_FRANKENPHP=false
 fi
+
+echo ""
+
+if [ "$RESEND_FLAG" = false ]; then
+  ask_yn "¿Usar Resend como proveedor de email?" "n" && USE_RESEND=true || USE_RESEND=false
+fi
+
+echo ""
+
+if [ "$SENTRY_FLAG" = false ]; then
+  ask_yn "¿Usar Sentry para monitoreo de errores?" "n" && USE_SENTRY=true || USE_SENTRY=false
+fi
+
+echo ""
+
+DEFAULT_GIT_NAME=$(git config --global user.name 2>/dev/null || echo "")
+DEFAULT_GIT_EMAIL=$(git config --global user.email 2>/dev/null || echo "")
+GIT_USER_NAME=$(ask_input "Tu nombre (git config)" "$DEFAULT_GIT_NAME")
+echo ""
+GIT_USER_EMAIL=$(ask_input "Tu email (git config)" "$DEFAULT_GIT_EMAIL")
 
 # --- Resolver config: DB ---
 case "$USE_DB" in
@@ -269,6 +301,10 @@ printf "  %-18s %s\n" "Redis:"         "$([ "$USE_REDIS"  = true ] && echo "sí"
 printf "  %-18s %s\n" "Solo API:"      "$([ "$API_ONLY"   = true ] && echo "sí" || echo "no")"
 printf "  %-18s %s\n" "Reverb:"        "$([ "$USE_REVERB" = true ] && echo "sí" || echo "no")"
 printf "  %-18s %s\n" "Octane:"        "$(octane_label)"
+printf "  %-18s %s\n" "Resend:"        "$([ "$USE_RESEND" = true ] && echo "sí" || echo "no")"
+printf "  %-18s %s\n" "Sentry:"        "$([ "$USE_SENTRY" = true ] && echo "sí" || echo "no")"
+printf "  %-18s %s\n" "Git nombre:"    "${GIT_USER_NAME:-(sin configurar)}"
+printf "  %-18s %s\n" "Git email:"     "${GIT_USER_EMAIL:-(sin configurar)}"
 echo -e "  ${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
@@ -321,6 +357,35 @@ if [ "$USE_REVERB" = true ]; then
   ok "Reverb instalado"
 fi
 
+# --- Pint & Larastan ---
+info "Instalando herramientas de calidad de código (Pint + Larastan)..."
+composer require --dev larastan/larastan --quiet
+cat > phpstan.neon << 'PHPSTAN'
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    paths:
+        - app/
+
+    level: 5
+PHPSTAN
+ok "Larastan instalado"
+
+# --- Resend ---
+if [ "$USE_RESEND" = true ]; then
+  info "Instalando Resend..."
+  composer require resend/resend-laravel --quiet
+  ok "Resend instalado"
+fi
+
+# --- Sentry ---
+if [ "$USE_SENTRY" = true ]; then
+  info "Instalando Sentry..."
+  composer require sentry/sentry-laravel --quiet
+  ok "Sentry instalado"
+fi
+
 # --- Helper de stubs ---
 download_stub() {
   local STUB="$1" OUTPUT="${2:-$1}"
@@ -336,6 +401,8 @@ download_stub() {
     | sed "s|{{QUEUE_CONNECTION}}|$QUEUE_CONNECTION|g" \
     | sed "s|{{OCTANE_SERVER}}|$OCTANE_SERVER|g" \
     | sed "s|{{APP_DEV_CMD}}|$APP_DEV_CMD|g" \
+    | sed "s|{{GIT_USER_NAME}}|$GIT_USER_NAME|g" \
+    | sed "s|{{GIT_USER_EMAIL}}|$GIT_USER_EMAIL|g" \
     > "$OUTPUT"
 }
 
@@ -360,14 +427,38 @@ ok "docker/php/api-optimizations.ini"
 download_stub "$ENV_STUB" ".env.example"
 ok ".env.example"
 
+download_stub "Makefile"
+ok "Makefile"
+
 # --- .env ---
 cp .env.example .env
 php artisan key:generate --quiet
 ok ".env generado"
 
+if [ "$USE_RESEND" = true ]; then
+  sed -i.bak 's/^MAIL_MAILER=.*/MAIL_MAILER=resend/' .env && rm -f .env.bak
+  sed -i.bak 's/^MAIL_MAILER=.*/MAIL_MAILER=resend/' .env.example && rm -f .env.example.bak
+  printf "\n# Resend\nRESEND_API_KEY=\n" >> .env
+  printf "\n# Resend\nRESEND_API_KEY=\n" >> .env.example
+  ok "Resend configurado en .env"
+fi
+
+if [ "$USE_SENTRY" = true ]; then
+  printf "\n# Sentry\nSENTRY_LARAVEL_DSN=\n" >> .env
+  printf "\n# Sentry\nSENTRY_LARAVEL_DSN=\n" >> .env.example
+  ok "Sentry configurado en .env"
+fi
+
 # --- Git ---
 info "Inicializando repositorio..."
 git init --quiet
+
+info "Instalando Git hooks..."
+mkdir -p .git/hooks
+curl -sS "$GIST_HOOK_URL" -o .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+ok "Git hooks instalados"
+
 git add .
 
 if [ "$USE_OCTANE" = false ]; then
