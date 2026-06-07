@@ -346,6 +346,7 @@ fi
 if [ "$API_ONLY" = true ]; then
   info "Configurando proyecto como API..."
   php artisan install:api --no-interaction --quiet
+  download_stub "routes/api.php" "routes/api.php"
   ok "Sanctum instalado, rutas API configuradas"
 fi
 
@@ -429,6 +430,9 @@ ok ".env.example"
 
 download_stub "Makefile"
 ok "Makefile"
+
+download_stub "routes/web.php" "routes/web.php"
+ok "routes/web.php"
 
 # --- .env ---
 cp .env.example .env

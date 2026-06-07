@@ -76,6 +76,7 @@ Dentro del proyecto creado:
 	- docker-compose.dev.yml (varia por DB/Redis)
 	- docker-compose.reverb.yml (si --reverb)
 	- docker/php/api-optimizations.ini
+	- routes/web.php (respuestas JSON base y healthcheck)
 	- .env.example (normal o sqlite)
 - .env generado con app key.
 - Repositorio Git inicializado + primer commit.
