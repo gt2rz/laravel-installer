@@ -28,7 +28,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: "{{APP_DEV_CMD}}"
+    command: sh -c "[ -f vendor/autoload.php ] || composer install --no-interaction --no-progress --quiet && {{APP_DEV_CMD}}"
     networks:
       - dev-network
 

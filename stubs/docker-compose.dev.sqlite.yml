@@ -20,7 +20,7 @@ services:
       - /app/vendor
     ports:
       - "${APP_PORT:-8000}:8000"
-    command: "{{APP_DEV_CMD}}"
+    command: sh -c "[ -f vendor/autoload.php ] || composer install --no-interaction --no-progress --quiet && {{APP_DEV_CMD}}"
     networks:
       - dev-network
 
