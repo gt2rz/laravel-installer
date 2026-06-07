@@ -194,6 +194,18 @@ setup:
 	sleep 5
 	$(DOCKER_DEV) exec $(CONTAINER_API) composer install
 	$(DOCKER_DEV) exec $(CONTAINER_API) php artisan key:generate
-	$(DOCKER_DEV) exec $(CONTAINER_API) php artisan migrate --seed
+	@if [ "$(FORCE)" = "1" ]; then \
+		$(DOCKER_DEV) exec $(CONTAINER_API) php artisan migrate:fresh --seed; \
+	elif [ "$(FORCE)" = "0" ]; then \
+		$(DOCKER_DEV) exec $(CONTAINER_API) php artisan migrate --seed; \
+	else \
+		printf "  ¿Forzar migraciones? migrate:fresh --seed [y/N]: "; \
+		read ANSWER; \
+		if [ "$$ANSWER" = "y" ] || [ "$$ANSWER" = "Y" ]; then \
+			$(DOCKER_DEV) exec $(CONTAINER_API) php artisan migrate:fresh --seed; \
+		else \
+			$(DOCKER_DEV) exec $(CONTAINER_API) php artisan migrate --seed; \
+		fi; \
+	fi
 	@make install-hooks
 	@echo "🎉 Entorno configurado con éxito."
