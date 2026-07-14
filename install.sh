@@ -123,8 +123,6 @@ FRANKENPHP_FLAG=false
 RESEND_FLAG=false
 SENTRY_FLAG=false
 
-GIST_HOOK_URL="https://gist.githubusercontent.com/gt2rz/39499fe47b687c4f2d5df06a5d2eaab8/raw/06cb67fe3d0a9fc3124ce71f4c57028f261c87db/gistfile1.txt"
-
 # --- Parse args ---
 for arg in "$@"; do
   case $arg in
@@ -434,10 +432,17 @@ ok "Makefile"
 download_stub "routes/web.php" "routes/web.php"
 ok "routes/web.php"
 
+download_stub "app/Console/Commands/GenerateBrunoCollection.php" "app/Console/Commands/GenerateBrunoCollection.php"
+ok "GenerateBrunoCollection"
+
 # --- .env ---
 cp .env.example .env
 php artisan key:generate --quiet
 ok ".env generado"
+
+info "Generando colección Bruno..."
+php artisan bruno:generate --force --no-interaction --quiet
+ok "Colección Bruno generada en docs/bruno"
 
 if [ "$USE_RESEND" = true ]; then
   sed -i.bak 's/^MAIL_MAILER=.*/MAIL_MAILER=resend/' .env && rm -f .env.bak
@@ -458,10 +463,10 @@ info "Inicializando repositorio..."
 git init --quiet
 
 info "Instalando Git hooks..."
-mkdir -p .git/hooks
-curl -sS "$GIST_HOOK_URL" -o .git/hooks/pre-commit
-chmod +x .git/hooks/pre-commit
-ok "Git hooks instalados"
+download_stub ".githooks/pre-commit"
+chmod +x .githooks/pre-commit
+git config core.hooksPath .githooks
+ok "Git hooks instalados en .githooks (core.hooksPath)"
 
 git add .
 

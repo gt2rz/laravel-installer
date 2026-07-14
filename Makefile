@@ -7,9 +7,6 @@ CONTAINER_API = api
 GIT_CONFIG_USER_NAME = "Miguel Gutiérrez"
 GIT_CONFIG_USER_EMAIL = "gt2rz.dev@gmail.com"
 
-# URL de tu Gist (Reemplaza esto con tu URL Raw real)
-GIST_HOOK_URL = https://gist.githubusercontent.com/gt2rz/39499fe47b687c4f2d5df06a5d2eaab8/raw/06cb67fe3d0a9fc3124ce71f4c57028f261c87db/gistfile1.txt
-
 # Definición de tareas
 .PHONY: help up down restart status logs shell setup migrate fresh seed test install git-config install-hooks tag-list tag-patch tag-minor tag-major tag-push \
         local-up local-down local-restart local-build local-status local-logs local-shell local-migrate local-fresh local-octane-status
@@ -133,18 +130,9 @@ git-config:
 	@echo "   Email: $(GIT_CONFIG_USER_EMAIL)"
 
 install-hooks:
-	@echo "📥 Buscando herramienta de descarga e instalando Git Hook..."
-	@mkdir -p .git/hooks
-	@if command -v curl >/dev/null 2>&1; then \
-		curl -sS $(GIST_HOOK_URL) -o .git/hooks/pre-commit; \
-	elif command -v wget >/dev/null 2>&1; then \
-		wget -qO .git/hooks/pre-commit $(GIST_HOOK_URL); \
-	else \
-		echo "❌ Error: Ni 'curl' ni 'wget' están instalados en tu sistema local."; \
-		exit 1; \
-	fi
-	@chmod +x .git/hooks/pre-commit
-	@echo "✅ Git Hook instalado correctamente en .git/hooks/pre-commit y listo para operar."
+	@chmod +x .githooks/pre-commit
+	@git config core.hooksPath .githooks
+	@echo "✅ Git Hooks activados desde .githooks (core.hooksPath)."
 
 # ── Git Tags ─────────────────────────────────────────────────────────────────
 
