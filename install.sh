@@ -19,6 +19,7 @@ NC='\033[0m'
 ok()   { echo -e "  ${GREEN}✔${NC} $1"; }
 info() { echo -e "  ${YELLOW}→${NC} $1"; }
 fail() { echo -e "  ${RED}✘ $1${NC}"; exit 1; }
+warn() { echo -e "  ${YELLOW}⚠${NC}  $1"; }
 
 # --- Interactive helpers (funcionan incluso piped desde curl) ---
 
@@ -58,7 +59,62 @@ ask_choice() {
   echo "${choice:-1}"
 }
 
-# --- Helpers ---
+# --- Helper de stubs (definido temprano: varios bloques opcionales lo usan) ---
+download_stub() {
+  local STUB="$1" OUTPUT="${2:-$1}"
+  mkdir -p "$(dirname "$OUTPUT")"
+  # pipefail en subshell propio: sin esto, un curl fallido queda enmascarado
+  # por el éxito de los sed posteriores y el fallo nunca se detecta.
+  (
+    set -o pipefail
+    curl -fsSL "$BASE_URL/$STUB" \
+      | sed "s|{{PROJECT_NAME}}|$PROJECT_NAME|g" \
+      | sed "s|{{DB_EXTENSION}}|$DB_EXTENSION|g" \
+      | sed "s|{{DB_CONNECTION}}|$DB_CONNECTION|g" \
+      | sed "s|{{DB_HOST}}|$DB_HOST|g" \
+      | sed "s|{{DB_PORT}}|$DB_PORT|g" \
+      | sed "s|{{CACHE_STORE}}|$CACHE_STORE|g" \
+      | sed "s|{{SESSION_DRIVER}}|$SESSION_DRIVER|g" \
+      | sed "s|{{QUEUE_CONNECTION}}|$QUEUE_CONNECTION|g" \
+      | sed "s|{{OCTANE_SERVER}}|$OCTANE_SERVER|g" \
+      | sed "s|{{APP_DEV_CMD}}|$APP_DEV_CMD|g" \
+      | sed "s|{{GIT_USER_NAME}}|$GIT_USER_NAME|g" \
+      | sed "s|{{GIT_USER_EMAIL}}|$GIT_USER_EMAIL|g" \
+      > "$OUTPUT"
+  )
+}
+
+# Descarga un stub y solo imprime el ok si tuvo éxito (usado vía run_optional).
+fetch_stub() {
+  local label="$1" stub="$2" output="${3:-$2}"
+  download_stub "$stub" "$output"
+  ok "$label"
+}
+
+# --- Manejo de fallos para pasos opcionales ---
+# Cada herramienta adicional (Octane, Reverb, Resend, Sentry, stubs, etc.) se
+# instala de forma aislada: si una falla, se avisa y el resto del proceso
+# continúa en lugar de abortar todo lo ya instalado.
+FAILED_TOOLS=()
+
+run_optional() {
+  local label="$1"; shift
+  set +e
+  ( set -e; "$@" )
+  local status=$?
+  set -e
+  if [ $status -ne 0 ]; then
+    warn "$label falló — continuando sin esta herramienta."
+    FAILED_TOOLS+=("$label")
+  fi
+  # Siempre devuelve 0: si el llamador usa el resultado en un && / || / if,
+  # bash propaga esa condición hacia dentro del subshell de arriba y anula
+  # su "set -e" interno, dejando que una herramienta fallida siga ejecutando
+  # sus pasos siguientes. Aislar el estado por completo evita ese efecto.
+  return 0
+}
+
+# --- Helpers de etiquetas ---
 db_label() {
   case "$USE_DB" in
     mysql)  echo "MySQL" ;;
@@ -77,22 +133,34 @@ octane_label() {
   fi
 }
 
+frontend_label() {
+  case "$FRONTEND_STACK" in
+    inertia-vue)   echo "Inertia + Vue" ;;
+    inertia-react) echo "Inertia + React" ;;
+    *)             echo "Blade" ;;
+  esac
+}
+
 usage() {
   echo ""
   echo -e "${BOLD}Uso:${NC}"
   echo "  bash -s [nombre-proyecto] [opciones]"
   echo ""
   echo -e "${BOLD}Opciones (omiten las preguntas interactivas):${NC}"
-  echo "  --mysql       MySQL en lugar de PostgreSQL"
-  echo "  --sqlite      SQLite en lugar de PostgreSQL"
-  echo "  --no-redis    Sin Redis (drivers: file/database)"
-  echo "  --api         Solo API (Sanctum, sin Blade ni Vite)"
-  echo "  --reverb      Instalar Laravel Reverb (WebSockets)"
-  echo "  --no-octane   Laravel sin Octane (PHP-CLI estándar)"
-  echo "  --swoole      Octane con Swoole en lugar de FrankenPHP"
-  echo "  --resend      Instalar Resend como proveedor de email"
-  echo "  --sentry      Instalar Sentry para monitoreo de errores"
-  echo "  --help        Mostrar esta ayuda"
+  echo "  --mysql          MySQL en lugar de PostgreSQL"
+  echo "  --sqlite         SQLite en lugar de PostgreSQL"
+  echo "  --no-redis       Sin Redis (drivers: file/database)"
+  echo "  --api            Solo API (Sanctum, sin Blade ni Vite)"
+  echo "  --inertia-vue    Frontend con Inertia + Vue (vía Laravel Breeze)"
+  echo "  --inertia-react  Frontend con Inertia + React (vía Laravel Breeze)"
+  echo "  --reverb         Instalar Laravel Reverb (WebSockets)"
+  echo "  --no-octane      Laravel sin Octane (PHP-CLI estándar)"
+  echo "  --swoole         Octane con Swoole en lugar de FrankenPHP"
+  echo "  --resend         Instalar Resend como proveedor de email"
+  echo "  --sentry         Instalar Sentry para monitoreo de errores"
+  echo "  --help           Mostrar esta ayuda"
+  echo ""
+  echo -e "${BOLD}Nota:${NC} --api es incompatible con --inertia-vue/--inertia-react (API only no usa Blade/Vite)."
   echo ""
   echo -e "${BOLD}Ejemplo:${NC}"
   echo "  curl -fsSL https://raw.githubusercontent.com/$GITHUB_USER/$GITHUB_REPO/$BRANCH/install.sh \\"
@@ -110,6 +178,7 @@ USE_OCTANE=true
 USE_FRANKENPHP=true
 USE_RESEND=false
 USE_SENTRY=false
+FRONTEND_STACK="blade"
 PROJECT_NAME=""
 GIT_USER_NAME=""
 GIT_USER_EMAIL=""
@@ -122,24 +191,31 @@ OCTANE_FLAG=false
 FRANKENPHP_FLAG=false
 RESEND_FLAG=false
 SENTRY_FLAG=false
+FRONTEND_FLAG=false
 
 # --- Parse args ---
 for arg in "$@"; do
   case $arg in
-    --mysql)     USE_DB="mysql";        DB_FLAG=true ;;
-    --sqlite)    USE_DB="sqlite";       DB_FLAG=true ;;
-    --no-redis)  USE_REDIS=false;       REDIS_FLAG=true ;;
-    --api)       API_ONLY=true;         API_FLAG=true ;;
-    --reverb)    USE_REVERB=true;       REVERB_FLAG=true ;;
-    --no-octane) USE_OCTANE=false;      OCTANE_FLAG=true ;;
-    --swoole)    USE_OCTANE=true; USE_FRANKENPHP=false; OCTANE_FLAG=true; FRANKENPHP_FLAG=true ;;
-    --resend)    USE_RESEND=true;  RESEND_FLAG=true ;;
-    --sentry)    USE_SENTRY=true;  SENTRY_FLAG=true ;;
+    --mysql)         USE_DB="mysql";        DB_FLAG=true ;;
+    --sqlite)        USE_DB="sqlite";       DB_FLAG=true ;;
+    --no-redis)      USE_REDIS=false;       REDIS_FLAG=true ;;
+    --api)           API_ONLY=true;         API_FLAG=true ;;
+    --inertia-vue)   FRONTEND_STACK="inertia-vue";   FRONTEND_FLAG=true ;;
+    --inertia-react) FRONTEND_STACK="inertia-react"; FRONTEND_FLAG=true ;;
+    --reverb)        USE_REVERB=true;       REVERB_FLAG=true ;;
+    --no-octane)     USE_OCTANE=false;      OCTANE_FLAG=true ;;
+    --swoole)        USE_OCTANE=true; USE_FRANKENPHP=false; OCTANE_FLAG=true; FRANKENPHP_FLAG=true ;;
+    --resend)        USE_RESEND=true;  RESEND_FLAG=true ;;
+    --sentry)        USE_SENTRY=true;  SENTRY_FLAG=true ;;
     --help|-h)   usage ;;
     -*)          fail "Opción desconocida: $arg. Usa --help para ver las opciones." ;;
     *)           [ -z "$PROJECT_NAME" ] && PROJECT_NAME="$arg" ;;
   esac
 done
+
+if [ "$API_ONLY" = true ] && [ "$FRONTEND_STACK" != "blade" ]; then
+  fail "--api y --inertia-vue/--inertia-react son incompatibles (API only no usa Blade/Vite)."
+fi
 
 # --- Header ---
 echo ""
@@ -184,6 +260,17 @@ echo ""
 
 if [ "$API_FLAG" = false ]; then
   ask_yn "¿Solo API? (Sanctum, sin Blade ni Vite)" "n" && API_ONLY=true || API_ONLY=false
+fi
+
+echo ""
+
+if [ "$FRONTEND_FLAG" = false ] && [ "$API_ONLY" = false ]; then
+  choice=$(ask_choice "Frontend:" "Blade" "Inertia + Vue" "Inertia + React")
+  case $choice in
+    2) FRONTEND_STACK="inertia-vue" ;;
+    3) FRONTEND_STACK="inertia-react" ;;
+    *) FRONTEND_STACK="blade" ;;
+  esac
 fi
 
 echo ""
@@ -297,6 +384,7 @@ printf "  %-18s %s\n" "Proyecto:"      "$PROJECT_NAME"
 printf "  %-18s %s\n" "Base de datos:" "$(db_label)"
 printf "  %-18s %s\n" "Redis:"         "$([ "$USE_REDIS"  = true ] && echo "sí" || echo "no")"
 printf "  %-18s %s\n" "Solo API:"      "$([ "$API_ONLY"   = true ] && echo "sí" || echo "no")"
+printf "  %-18s %s\n" "Frontend:"      "$(frontend_label)"
 printf "  %-18s %s\n" "Reverb:"        "$([ "$USE_REVERB" = true ] && echo "sí" || echo "no")"
 printf "  %-18s %s\n" "Octane:"        "$(octane_label)"
 printf "  %-18s %s\n" "Resend:"        "$([ "$USE_RESEND" = true ] && echo "sí" || echo "no")"
@@ -309,15 +397,14 @@ echo ""
 ask_yn "¿Continuar?" "y" || { echo "  Cancelado."; exit 0; }
 echo ""
 
-# --- Cleanup en error ---
+# --- Cleanup en error (solo durante el bootstrap irreversible) ---
 trap 'echo -e "\n  ${RED}✘ Error — limpiando $PROJECT_NAME...${NC}"; cd .. 2>/dev/null; rm -rf "$PROJECT_NAME" 2>/dev/null' ERR
 
 # --- Dependencias ---
 command -v composer &>/dev/null || fail "composer no está instalado."
 command -v curl     &>/dev/null || fail "curl no está instalado."
 command -v git      &>/dev/null || fail "git no está instalado."
-command -v docker   &>/dev/null \
-  || echo -e "  ${YELLOW}⚠${NC}  docker no encontrado — los archivos se crearán igualmente."
+command -v docker   &>/dev/null || warn "docker no encontrado — los archivos se crearán igualmente."
 
 # --- Laravel ---
 info "Creando proyecto Laravel..."
@@ -325,8 +412,12 @@ composer create-project laravel/laravel "$PROJECT_NAME" --quiet
 cd "$PROJECT_NAME"
 ok "Proyecto creado"
 
+# A partir de aquí ya existe un proyecto Laravel válido en disco: un fallo en
+# una herramienta opcional no debe borrarlo, solo se avisa y se continúa.
+trap - ERR
+
 # --- Octane ---
-if [ "$USE_OCTANE" = true ]; then
+install_octane() {
   if [ "$USE_FRANKENPHP" = true ]; then
     info "Instalando Laravel Octane con FrankenPHP..."
     composer require laravel/octane --quiet
@@ -338,28 +429,54 @@ if [ "$USE_OCTANE" = true ]; then
     php artisan octane:install --server=swoole --no-interaction
     ok "Octane + Swoole instalado"
   fi
+}
+if [ "$USE_OCTANE" = true ]; then
+  run_optional "Octane" install_octane
+fi
+
+# --- Frontend: Inertia (Laravel Breeze) ---
+install_frontend() {
+  local stack="vue"
+  [ "$FRONTEND_STACK" = "inertia-react" ] && stack="react"
+  info "Instalando Laravel Breeze (Inertia + $stack)..."
+  composer require laravel/breeze --dev --quiet
+  php artisan breeze:install "$stack" --no-interaction --quiet
+  ok "Breeze (Inertia + $stack) instalado"
+}
+if [ "$FRONTEND_STACK" != "blade" ]; then
+  run_optional "Frontend (Inertia)" install_frontend
 fi
 
 # --- API only ---
-if [ "$API_ONLY" = true ]; then
+configure_api_only() {
   info "Configurando proyecto como API..."
   php artisan install:api --no-interaction --quiet
   download_stub "routes/api.php" "routes/api.php"
-  ok "Sanctum instalado, rutas API configuradas"
+  printf '<?php\n' > routes/web.php
+  rm -f resources/views/welcome.blade.php vite.config.js package.json package-lock.json
+  rm -rf resources/js resources/css
+  ok "Sanctum instalado, proyecto configurado como solo-API (sin Blade ni Vite)"
+}
+if [ "$API_ONLY" = true ]; then
+  run_optional "API only" configure_api_only
 fi
 
 # --- Reverb ---
-if [ "$USE_REVERB" = true ]; then
+install_reverb() {
   info "Instalando Laravel Reverb..."
   composer require laravel/reverb --quiet
   php artisan reverb:install --no-interaction
   ok "Reverb instalado"
+}
+if [ "$USE_REVERB" = true ]; then
+  run_optional "Reverb" install_reverb
 fi
 
 # --- Pint & Larastan ---
-info "Instalando herramientas de calidad de código (Pint + Larastan)..."
-composer require --dev larastan/larastan --quiet
-cat > phpstan.neon << 'PHPSTAN'
+install_quality_tools() {
+  info "Instalando herramientas de calidad de código (Pint + Larastan)..."
+  composer require --dev larastan/larastan --quiet
+  cat > phpstan.neon << 'PHPSTAN'
 includes:
     - vendor/larastan/larastan/extension.neon
 
@@ -369,104 +486,110 @@ parameters:
 
     level: 5
 PHPSTAN
-ok "Larastan instalado"
+  ok "Larastan instalado"
+}
+run_optional "Larastan" install_quality_tools
 
 # --- Resend ---
-if [ "$USE_RESEND" = true ]; then
+install_resend() {
   info "Instalando Resend..."
   composer require resend/resend-laravel --quiet
   ok "Resend instalado"
+}
+if [ "$USE_RESEND" = true ]; then
+  run_optional "Resend" install_resend
 fi
 
 # --- Sentry ---
-if [ "$USE_SENTRY" = true ]; then
+install_sentry() {
   info "Instalando Sentry..."
   composer require sentry/sentry-laravel --quiet
   ok "Sentry instalado"
+}
+if [ "$USE_SENTRY" = true ]; then
+  run_optional "Sentry" install_sentry
 fi
 
-# --- Helper de stubs ---
-download_stub() {
-  local STUB="$1" OUTPUT="${2:-$1}"
-  mkdir -p "$(dirname "$OUTPUT")"
-  curl -fsSL "$BASE_URL/$STUB" \
-    | sed "s|{{PROJECT_NAME}}|$PROJECT_NAME|g" \
-    | sed "s|{{DB_EXTENSION}}|$DB_EXTENSION|g" \
-    | sed "s|{{DB_CONNECTION}}|$DB_CONNECTION|g" \
-    | sed "s|{{DB_HOST}}|$DB_HOST|g" \
-    | sed "s|{{DB_PORT}}|$DB_PORT|g" \
-    | sed "s|{{CACHE_STORE}}|$CACHE_STORE|g" \
-    | sed "s|{{SESSION_DRIVER}}|$SESSION_DRIVER|g" \
-    | sed "s|{{QUEUE_CONNECTION}}|$QUEUE_CONNECTION|g" \
-    | sed "s|{{OCTANE_SERVER}}|$OCTANE_SERVER|g" \
-    | sed "s|{{APP_DEV_CMD}}|$APP_DEV_CMD|g" \
-    | sed "s|{{GIT_USER_NAME}}|$GIT_USER_NAME|g" \
-    | sed "s|{{GIT_USER_EMAIL}}|$GIT_USER_EMAIL|g" \
-    > "$OUTPUT"
+# --- Dockerfile: omite la etapa de build de assets en proyectos --api ---
+prune_dockerfile_assets() {
+  sed -i.bak '/# --- assets:start/,/# --- assets:end/d' Dockerfile
+  sed -i.bak '/COPY --from=assets/d' Dockerfile
+  rm -f Dockerfile.bak
+  ok "Dockerfile sin build de assets (API only)"
 }
 
 info "Descargando archivos de infraestructura..."
-download_stub "$DOCKERFILE_STUB" "Dockerfile"
-ok "Dockerfile"
+run_optional "Dockerfile" fetch_stub "Dockerfile" "$DOCKERFILE_STUB" "Dockerfile"
 
-download_stub "docker-compose.yml"
-ok "docker-compose.yml"
-
-download_stub "$DEV_COMPOSE_STUB" "docker-compose.dev.yml"
-ok "docker-compose.dev.yml"
-
-if [ "$USE_REVERB" = true ]; then
-  download_stub "docker-compose.reverb.yml"
-  ok "docker-compose.reverb.yml"
+if [ "$API_ONLY" = true ]; then
+  run_optional "Dockerfile sin build de assets (API only)" prune_dockerfile_assets
 fi
 
-download_stub "docker/php/api-optimizations.ini"
-ok "docker/php/api-optimizations.ini"
+run_optional "docker-compose.yml" fetch_stub "docker-compose.yml" "docker-compose.yml"
 
-download_stub "$ENV_STUB" ".env.example"
-ok ".env.example"
+run_optional "docker-compose.dev.yml" fetch_stub "docker-compose.dev.yml" "$DEV_COMPOSE_STUB" "docker-compose.dev.yml"
 
-download_stub "Makefile"
-ok "Makefile"
+if [ "$USE_REVERB" = true ]; then
+  run_optional "docker-compose.reverb.yml" fetch_stub "docker-compose.reverb.yml" "docker-compose.reverb.yml"
+fi
 
-download_stub "routes/web.php" "routes/web.php"
-ok "routes/web.php"
+run_optional "docker/php/api-optimizations.ini" fetch_stub "docker/php/api-optimizations.ini" "docker/php/api-optimizations.ini"
 
-download_stub "app/Console/Commands/GenerateBrunoCollection.php" "app/Console/Commands/GenerateBrunoCollection.php"
-ok "GenerateBrunoCollection"
+run_optional ".env.example" fetch_stub ".env.example" "$ENV_STUB" ".env.example"
 
-# --- .env ---
+run_optional "Makefile" fetch_stub "Makefile" "Makefile"
+
+if [ "$API_ONLY" = false ]; then
+  run_optional "routes/web.php" fetch_stub "routes/web.php" "routes/web.php" "routes/web.php"
+fi
+
+run_optional "GenerateBrunoCollection" fetch_stub "GenerateBrunoCollection" "app/Console/Commands/GenerateBrunoCollection.php" "app/Console/Commands/GenerateBrunoCollection.php"
+
+# --- .env (paso crítico: sin esto el proyecto no arranca) ---
+[ -f .env.example ] || fail "No se pudo descargar .env.example — revisa manualmente el proyecto en $PROJECT_NAME."
 cp .env.example .env
-php artisan key:generate --quiet
+php artisan key:generate --quiet || fail "No se pudo generar APP_KEY — revisa .env manualmente en $PROJECT_NAME."
 ok ".env generado"
 
-info "Generando colección Bruno..."
-php artisan bruno:generate --force --no-interaction --quiet
-ok "Colección Bruno generada en docs/bruno"
+generate_bruno() {
+  info "Generando colección Bruno..."
+  php artisan bruno:generate --force --no-interaction --quiet
+  ok "Colección Bruno generada en docs/bruno"
+}
+run_optional "Colección Bruno" generate_bruno
 
-if [ "$USE_RESEND" = true ]; then
+configure_resend_env() {
   sed -i.bak 's/^MAIL_MAILER=.*/MAIL_MAILER=resend/' .env && rm -f .env.bak
   sed -i.bak 's/^MAIL_MAILER=.*/MAIL_MAILER=resend/' .env.example && rm -f .env.example.bak
   printf "\n# Resend\nRESEND_API_KEY=\n" >> .env
   printf "\n# Resend\nRESEND_API_KEY=\n" >> .env.example
   ok "Resend configurado en .env"
+}
+if [ "$USE_RESEND" = true ]; then
+  run_optional "Resend (.env)" configure_resend_env
 fi
 
-if [ "$USE_SENTRY" = true ]; then
+configure_sentry_env() {
   printf "\n# Sentry\nSENTRY_LARAVEL_DSN=\n" >> .env
   printf "\n# Sentry\nSENTRY_LARAVEL_DSN=\n" >> .env.example
   ok "Sentry configurado en .env"
+}
+if [ "$USE_SENTRY" = true ]; then
+  run_optional "Sentry (.env)" configure_sentry_env
 fi
 
 # --- Git ---
 info "Inicializando repositorio..."
 git init --quiet
 
-info "Instalando Git hooks..."
-download_stub ".githooks/pre-commit"
-chmod +x .githooks/pre-commit
-git config core.hooksPath .githooks
-ok "Git hooks instalados en .githooks (core.hooksPath)"
+install_git_hooks() {
+  info "Instalando Git hooks..."
+  download_stub ".githooks/pre-commit"
+  chmod +x .githooks/pre-commit
+  git config core.hooksPath .githooks
+  ok "Git hooks instalados en .githooks (core.hooksPath)"
+}
+run_optional "Git hooks" install_git_hooks
 
 git add .
 
@@ -480,6 +603,16 @@ fi
 
 git commit --quiet --no-verify -m "$COMMIT_MSG"
 ok "Primer commit creado"
+
+# --- Resumen de fallos (si los hubo) ---
+if [ ${#FAILED_TOOLS[@]} -gt 0 ]; then
+  echo ""
+  echo -e "  ${YELLOW}⚠ Algunas herramientas opcionales no se instalaron:${NC}"
+  for t in "${FAILED_TOOLS[@]}"; do
+    echo "    - $t"
+  done
+  echo "  El resto del proyecto está listo; puedes instalarlas manualmente."
+fi
 
 # --- Done ---
 echo ""

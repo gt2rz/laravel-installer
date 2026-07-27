@@ -44,10 +44,13 @@ echo "✅ ${GREEN}Seguridad de archivos y credenciales aprobada.${NC}"
 # --------------------------------------------------------
 # 3. CALIDAD DE CÓDIGO Y ESTILO (Laravel Pint & Larastan)
 # --------------------------------------------------------
-# Todo el tooling corre dentro del contenedor 'api' (vendor no existe en el host)
-if [ -z "$(docker compose -f docker-compose.dev.yml ps -q --status running api)" ]; then
-    echo "❌ ${RED}Error: el contenedor 'api' no está corriendo. Levanta el entorno con 'make up' antes de commitear.${NC}"
-    exit 1
+# Todo el tooling corre dentro del contenedor 'api' (vendor no existe en el host).
+# Si el entorno no está levantado, se omiten estas verificaciones en vez de bloquear el commit.
+if [ -z "$(docker compose -f docker-compose.dev.yml ps -q --status running api 2>/dev/null)" ]; then
+    echo "⚠️  ${YELLOW}El contenedor 'api' no está corriendo. Se omiten Pint, Larastan y los tests.${NC}"
+    echo "⚠️  ${YELLOW}Levanta el entorno con 'make up' para que estas verificaciones se ejecuten.${NC}"
+    echo "🎉 ${GREEN}Creando el commit...${NC}"
+    exit 0
 fi
 
 STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.php$' || true)

@@ -4,14 +4,15 @@ Instalador personalizado para crear proyectos Laravel listos para Docker, con so
 
 - Base de datos: PostgreSQL, MySQL o SQLite.
 - Cache/sesiones/colas: Redis o modo sin Redis.
-- Modo API only opcional (instala Sanctum).
+- Frontend: Blade (default), Inertia + Vue o Inertia + React (vía Laravel Breeze).
+- Modo API only opcional (instala Sanctum, sin Blade ni Vite).
 - Reverb opcional (WebSockets).
 - Servidor de app:
 	- Octane + FrankenPHP (default).
 	- Octane + Swoole.
 	- Laravel sin Octane (php artisan serve).
 
-El instalador crea un proyecto Laravel nuevo, aplica configuración en .env, descarga stubs de infraestructura y deja un primer commit de Git.
+El instalador crea un proyecto Laravel nuevo, aplica configuración en .env, descarga stubs de infraestructura y deja un primer commit de Git. Cada herramienta opcional (Octane, Reverb, Resend, Sentry, stubs individuales, etc.) se instala de forma independiente: si una falla, el script avisa y continúa con el resto en lugar de abortar todo el proceso.
 
 ## Uso rápido
 
@@ -41,10 +42,14 @@ chmod +x install.sh
 - --sqlite: usa SQLite en lugar de PostgreSQL.
 - --no-redis: desactiva Redis (cache/colas/sesiones en database/file).
 - --api: instala Laravel en modo API only (Sanctum, sin Blade/Vite scaffold).
+- --inertia-vue: frontend con Inertia + Vue (vía Laravel Breeze, incluye páginas de auth).
+- --inertia-react: frontend con Inertia + React (vía Laravel Breeze, incluye páginas de auth).
 - --reverb: instala Laravel Reverb.
 - --no-octane: desactiva Octane y usa php artisan serve.
 - --swoole: usa Octane con Swoole (en lugar de FrankenPHP).
 - --help: muestra ayuda.
+
+Nota: --api es incompatible con --inertia-vue/--inertia-react (API only no usa Blade/Vite).
 
 ## Requisitos
 
@@ -61,6 +66,8 @@ Opcional (recomendado para desarrollo local con contenedores):
 
 Nota: si Docker no esta instalado, el script igualmente genera archivos.
 
+Nota: Node/npm no son requisito del instalador ni del host. Para proyectos con Inertia (o el Blade + Vite por defecto), el build de los assets del frontend ocurre dentro de la imagen Docker de produccion (etapa `assets` en el Dockerfile), no en la maquina donde corres install.sh.
+
 ## Que genera el instalador
 
 Dentro del proyecto creado:
@@ -68,18 +75,30 @@ Dentro del proyecto creado:
 - Proyecto base Laravel (composer create-project).
 - Instalacion opcional de:
 	- laravel/octane
+	- laravel/breeze (Inertia + Vue o Inertia + React, si se elige frontend Inertia)
 	- laravel/reverb
-	- install:api (Sanctum)
+	- install:api (Sanctum), con limpieza de resources/js, resources/css, vite.config.js y package.json cuando es API only
 - Archivos descargados desde stubs:
-	- Dockerfile (varia por servidor)
+	- Dockerfile (varia por servidor; incluye build de assets con Node salvo en modo API only)
 	- docker-compose.yml (produccion)
 	- docker-compose.dev.yml (varia por DB/Redis)
 	- docker-compose.reverb.yml (si --reverb)
 	- docker/php/api-optimizations.ini
-	- routes/web.php (respuestas JSON base y healthcheck)
+	- routes/web.php (se omite en modo API only)
 	- .env.example (normal o sqlite)
 - .env generado con app key.
 - Repositorio Git inicializado + primer commit.
+
+Si alguna herramienta opcional falla (por ejemplo un `composer require` que no responde, o la descarga de un stub), el instalador lo avisa en el momento y sigue con el resto. Al final se imprime un resumen tipo:
+
+```text
+⚠ Algunas herramientas opcionales no se instalaron:
+    - Reverb
+    - Colección Bruno
+  El resto del proyecto está listo; puedes instalarlas manualmente.
+```
+
+Solo un fallo en la creación del proyecto base (`composer create-project`) o en la generación de `.env`/`APP_KEY` aborta el instalador por completo (ahí sí se limpia el directorio creado, porque no queda un proyecto usable).
 
 ## Matriz de stubs
 
@@ -194,17 +213,41 @@ Comando sugerido al final:
 docker compose -f docker-compose.dev.yml -f docker-compose.reverb.yml up --build
 ```
 
+### 5) Frontend con Inertia + Vue
+
+```bash
+./install.sh mi-app-vue --inertia-vue
+```
+
+Resultado esperado:
+
+- Base de datos: PostgreSQL
+- Redis: si
+- Solo API: no
+- Frontend: Inertia + Vue (via laravel/breeze, incluye paginas de auth)
+- Reverb: no
+- Octane: si (FrankenPHP)
+- Dockerfile usado: stubs/Dockerfile (con etapa de build de assets Node)
+
+Comando sugerido al final:
+
+```bash
+docker compose -f docker-compose.dev.yml up --build
+```
+
 Nota: cuando usas flags, el wizard interactivo se omite para esas opciones y el script aplica esos valores directamente.
 
 ## Tabla rapida de flags y efectos
 
 | Flag | Efecto principal | Impacto en stubs/servicios |
 | --- | --- | --- |
-| (sin flags) | PostgreSQL + Redis + Octane FrankenPHP | Dockerfile: stubs/Dockerfile, compose dev: stubs/docker-compose.dev.yml |
+| (sin flags) | PostgreSQL + Redis + Octane FrankenPHP + Blade | Dockerfile: stubs/Dockerfile, compose dev: stubs/docker-compose.dev.yml |
 | --mysql | Cambia DB a MySQL | compose dev: stubs/docker-compose.dev.mysql.yml (o .no-redis) |
 | --sqlite | Cambia DB a SQLite | .env.example.sqlite y compose dev sqlite |
 | --no-redis | Desactiva Redis | CACHE_STORE=database, SESSION_DRIVER=file, QUEUE_CONNECTION=database; sin servicio redis |
-| --api | API only | Ejecuta php artisan install:api (Sanctum) |
+| --api | API only | Ejecuta php artisan install:api (Sanctum); elimina Blade/Vite y omite routes/web.php |
+| --inertia-vue | Frontend Inertia + Vue | Ejecuta laravel/breeze vue; Dockerfile incluye build de assets con Node |
+| --inertia-react | Frontend Inertia + React | Ejecuta laravel/breeze react; Dockerfile incluye build de assets con Node |
 | --reverb | Habilita WebSockets Reverb | genera docker-compose.reverb.yml y agrega servicio reverb al levantar con -f extra |
 | --no-octane | Sin Octane | Dockerfile: stubs/Dockerfile.plain, comando app: php artisan serve |
 | --swoole | Octane con Swoole | Dockerfile: stubs/Dockerfile.swoole, comando app: octane:start --server=swoole |
@@ -213,6 +256,7 @@ Precedencia importante:
 
 - --swoole implica Octane activo.
 - --no-octane ignora el uso de servidor Octane (FrankenPHP/Swoole) y selecciona Dockerfile.plain.
+- --api es incompatible con --inertia-vue/--inertia-react; combinarlos aborta el instalador con un mensaje de error.
 - Para Redis y DB, el compose dev final se elige por combinacion (ver matriz de stubs).
 
 ## Comandos de arranque recomendados
@@ -234,6 +278,21 @@ docker compose -f docker-compose.dev.yml -f docker-compose.reverb.yml up --build
 ## Produccion (referencia)
 
 Se incluye stubs/docker-compose.yml para despliegue con imagen de la app y red externa dokploy-network.
+
+## Mantenimiento de versiones
+
+Los paquetes de Composer (Laravel, Octane, Breeze, Reverb, Larastan, Resend, Sentry) se instalan siempre sin version fijada, por lo que ya resuelven a la ultima version estable disponible.
+
+Las imagenes base de Docker si quedan fijadas a una version concreta (por estabilidad: un mayor de base de datos no debe cambiar solo sin que el desarrollador lo note). Version actual de cada pin:
+
+- php:8.4-cli (stubs/Dockerfile.plain, stubs/Dockerfile.swoole)
+- composer:2 (todas las variantes de Dockerfile, flotando en la mayor 2.x)
+- dunglas/frankenphp (stubs/Dockerfile, sin tag, siempre latest)
+- postgres:18-alpine
+- mysql:8.4
+- redis:8-alpine
+
+Revisa estos pines cada pocos meses (o cuando notes que Docker Hub ya tiene una version mayor mas reciente) y actualizalos manualmente en los stubs correspondientes. No hay CI ni bots de actualizacion automatica en este repo; si en el futuro se quiere automatizar, Dependabot con el ecosistema Docker es la opcion estandar de bajo mantenimiento.
 
 ## Personalizacion
 
@@ -317,13 +376,16 @@ chmod +x install.sh
 
 Sintoma:
 
-- El script falla al descargar Dockerfile o docker-compose desde BASE_URL
+- El instalador muestra `⚠ <archivo> falló — continuando sin esta herramienta` para un Dockerfile, docker-compose u otro stub, y lo lista en el resumen final
+
+Nota: desde que el manejo de fallos es por herramienta, esto ya no aborta el instalador completo; el proyecto se termina de generar igual, pero el archivo afectado puede faltar o quedar vacio.
 
 Solucion:
 
 - Verifica conexion a internet
 - Revisa que GITHUB_USER, GITHUB_REPO y BRANCH en install.sh apunten a rutas validas
 - Prueba manualmente la URL raw del stub en navegador o con curl
+- Vuelve a descargar el archivo a mano (`curl -fsSL <BASE_URL>/<stub> -o <archivo>`) o re-ejecuta el instalador
 
 ## Documentacion adicional
 

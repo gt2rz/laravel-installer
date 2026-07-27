@@ -1,6 +1,5 @@
 # Variables internas
 DOCKER_DEV   = docker compose -f docker-compose.dev.yml
-DOCKER_LOCAL = docker compose -f docker-compose.local.yml
 CONTAINER_API = api
 
 # Configuración de Git (Reemplaza con tus datos reales)
@@ -8,8 +7,7 @@ GIT_CONFIG_USER_NAME = "Miguel Gutiérrez"
 GIT_CONFIG_USER_EMAIL = "gt2rz.dev@gmail.com"
 
 # Definición de tareas
-.PHONY: help up down restart status logs shell setup migrate fresh seed test install git-config install-hooks tag-list tag-patch tag-minor tag-major tag-push \
-        local-up local-down local-restart local-build local-status local-logs local-shell local-migrate local-fresh local-octane-status
+.PHONY: help up down restart status logs shell setup migrate fresh seed test install git-config install-hooks tag-list tag-patch tag-minor tag-major tag-push
 
 # Comando por defecto: Muestra la ayuda
 help:
@@ -26,18 +24,6 @@ help:
 	@echo "  make fresh     - Borra y recrea la base de datos con migraciones"
 	@echo "  make seed      - Ejecuta los seeders de Laravel"
 	@echo "  make test      - Ejecuta las pruebas automatizadas (Pest/PHPUnit)"
-	@echo ""
-	@echo "=== Local-Prod (Dockerfile.local — réplica de producción con Octane) ==="
-	@echo "  make local-up           - Levanta el entorno réplica de producción"
-	@echo "  make local-down         - Detiene el entorno réplica de producción"
-	@echo "  make local-restart      - Reinicia workers de Octane (aplica cambios de código)"
-	@echo "  make local-build        - Reconstruye la imagen y levanta"
-	@echo "  make local-status       - Muestra el estado de los servicios"
-	@echo "  make local-logs         - Muestra los logs en tiempo real"
-	@echo "  make local-shell        - Entra a la terminal del contenedor"
-	@echo "  make local-migrate      - Ejecuta migraciones"
-	@echo "  make local-fresh        - Reset completo de base de datos"
-	@echo "  make local-octane-status - Verifica el estado de Octane y Supervisor"
 	@echo ""
 	@echo "=== Git Tags (Versionado Semántico) ==="
 	@echo "  make tag-list  - Lista todos los tags existentes"
@@ -81,44 +67,6 @@ seed:
 
 test:
 	$(DOCKER_DEV) exec $(CONTAINER_API) php artisan test --parallel
-
-# ── Local-Prod (réplica de producción con Octane) ─────────────────────────────
-
-local-up:
-	$(DOCKER_LOCAL) up -d
-	@echo "🚀 API (Octane) corriendo en http://localhost:8000"
-
-local-down:
-	$(DOCKER_LOCAL) down
-
-local-restart:
-	$(DOCKER_LOCAL) restart $(CONTAINER_API)
-	@echo "♻️  Workers de Octane reiniciados"
-
-local-build:
-	$(DOCKER_LOCAL) up -d --build
-	@echo "🔨 Imagen reconstruida y API corriendo en http://localhost:8000"
-
-local-status:
-	$(DOCKER_LOCAL) ps
-
-local-logs:
-	$(DOCKER_LOCAL) logs -f $(CONTAINER_API)
-
-local-shell:
-	$(DOCKER_LOCAL) exec -it $(CONTAINER_API) sh
-
-local-migrate:
-	$(DOCKER_LOCAL) exec $(CONTAINER_API) php artisan migrate
-
-local-fresh:
-	$(DOCKER_LOCAL) exec $(CONTAINER_API) php artisan migrate:fresh
-
-local-octane-status:
-	@echo "── Supervisor ──────────────────────────────"
-	$(DOCKER_LOCAL) exec $(CONTAINER_API) supervisorctl status
-	@echo "── Octane ──────────────────────────────────"
-	$(DOCKER_LOCAL) exec $(CONTAINER_API) php artisan octane:status
 
 # ── Git Hooks ─────────────────────────────────────────────────────────────────
 
