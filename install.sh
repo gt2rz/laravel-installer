@@ -151,8 +151,8 @@ usage() {
   echo "  --sqlite         SQLite en lugar de PostgreSQL"
   echo "  --no-redis       Sin Redis (drivers: file/database)"
   echo "  --api            Solo API (Sanctum, sin Blade ni Vite)"
-  echo "  --inertia-vue    Frontend con Inertia + Vue (vía Laravel Breeze)"
-  echo "  --inertia-react  Frontend con Inertia + React (vía Laravel Breeze)"
+  echo "  --inertia-vue    Frontend con Inertia + Vue (starter kit oficial, incluye auth con Fortify)"
+  echo "  --inertia-react  Frontend con Inertia + React (starter kit oficial, incluye auth con Fortify)"
   echo "  --reverb         Instalar Laravel Reverb (WebSockets)"
   echo "  --no-octane      Laravel sin Octane (PHP-CLI estándar)"
   echo "  --swoole         Octane con Swoole en lugar de FrankenPHP"
@@ -407,8 +407,17 @@ command -v git      &>/dev/null || fail "git no está instalado."
 command -v docker   &>/dev/null || warn "docker no encontrado — los archivos se crearán igualmente."
 
 # --- Laravel ---
+# Desde Laravel 13 el frontend Inertia ya no se monta con Breeze sobre el
+# skeleton base: los starter kits oficiales (Fortify + Inertia + Vue/React)
+# son el propio proyecto raíz, igual que laravel/laravel.
+case "$FRONTEND_STACK" in
+  inertia-vue)   BASE_PACKAGE="laravel/vue-starter-kit";   STABILITY_FLAG="--stability=dev" ;;
+  inertia-react) BASE_PACKAGE="laravel/react-starter-kit"; STABILITY_FLAG="--stability=dev" ;;
+  *)             BASE_PACKAGE="laravel/laravel";           STABILITY_FLAG="" ;;
+esac
+
 info "Creando proyecto Laravel..."
-composer create-project laravel/laravel "$PROJECT_NAME" --quiet
+composer create-project "$BASE_PACKAGE" "$PROJECT_NAME" $STABILITY_FLAG --quiet
 cd "$PROJECT_NAME"
 ok "Proyecto creado"
 
@@ -432,19 +441,6 @@ install_octane() {
 }
 if [ "$USE_OCTANE" = true ]; then
   run_optional "Octane" install_octane
-fi
-
-# --- Frontend: Inertia (Laravel Breeze) ---
-install_frontend() {
-  local stack="vue"
-  [ "$FRONTEND_STACK" = "inertia-react" ] && stack="react"
-  info "Instalando Laravel Breeze (Inertia + $stack)..."
-  composer require laravel/breeze --dev --quiet
-  php artisan breeze:install "$stack" --no-interaction --quiet
-  ok "Breeze (Inertia + $stack) instalado"
-}
-if [ "$FRONTEND_STACK" != "blade" ]; then
-  run_optional "Frontend (Inertia)" install_frontend
 fi
 
 # --- API only ---
@@ -539,7 +535,7 @@ run_optional ".env.example" fetch_stub ".env.example" "$ENV_STUB" ".env.example"
 
 run_optional "Makefile" fetch_stub "Makefile" "Makefile"
 
-if [ "$API_ONLY" = false ]; then
+if [ "$API_ONLY" = false ] && [ "$FRONTEND_STACK" = "blade" ]; then
   run_optional "routes/web.php" fetch_stub "routes/web.php" "routes/web.php" "routes/web.php"
 fi
 

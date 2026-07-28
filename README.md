@@ -4,7 +4,7 @@ Instalador personalizado para crear proyectos Laravel listos para Docker, con so
 
 - Base de datos: PostgreSQL, MySQL o SQLite.
 - Cache/sesiones/colas: Redis o modo sin Redis.
-- Frontend: Blade (default), Inertia + Vue o Inertia + React (vía Laravel Breeze).
+- Frontend: Blade (default), Inertia + Vue o Inertia + React (starter kits oficiales de Laravel, con auth vía Fortify).
 - Modo API only opcional (instala Sanctum, sin Blade ni Vite).
 - Reverb opcional (WebSockets).
 - Servidor de app:
@@ -42,8 +42,8 @@ chmod +x install.sh
 - --sqlite: usa SQLite en lugar de PostgreSQL.
 - --no-redis: desactiva Redis (cache/colas/sesiones en database/file).
 - --api: instala Laravel en modo API only (Sanctum, sin Blade/Vite scaffold).
-- --inertia-vue: frontend con Inertia + Vue (vía Laravel Breeze, incluye páginas de auth).
-- --inertia-react: frontend con Inertia + React (vía Laravel Breeze, incluye páginas de auth).
+- --inertia-vue: frontend con Inertia + Vue (starter kit oficial laravel/vue-starter-kit, incluye páginas de auth vía Fortify).
+- --inertia-react: frontend con Inertia + React (starter kit oficial laravel/react-starter-kit, incluye páginas de auth vía Fortify).
 - --reverb: instala Laravel Reverb.
 - --no-octane: desactiva Octane y usa php artisan serve.
 - --swoole: usa Octane con Swoole (en lugar de FrankenPHP).
@@ -72,10 +72,9 @@ Nota: Node/npm no son requisito del instalador ni del host. Para proyectos con I
 
 Dentro del proyecto creado:
 
-- Proyecto base Laravel (composer create-project).
+- Proyecto base Laravel (composer create-project). Para frontend Inertia, el paquete base es directamente laravel/vue-starter-kit o laravel/react-starter-kit (incluyen Fortify + Inertia + Vite ya configurados) en lugar de laravel/laravel.
 - Instalacion opcional de:
 	- laravel/octane
-	- laravel/breeze (Inertia + Vue o Inertia + React, si se elige frontend Inertia)
 	- laravel/reverb
 	- install:api (Sanctum), con limpieza de resources/js, resources/css, vite.config.js y package.json cuando es API only
 - Archivos descargados desde stubs:
@@ -84,7 +83,7 @@ Dentro del proyecto creado:
 	- docker-compose.dev.yml (varia por DB/Redis)
 	- docker-compose.reverb.yml (si --reverb)
 	- docker/php/api-optimizations.ini
-	- routes/web.php (se omite en modo API only)
+	- routes/web.php (solo en frontend Blade; se omite en modo API only y en Inertia, donde ya vienen las rutas del starter kit)
 	- .env.example (normal o sqlite)
 - .env generado con app key.
 - Repositorio Git inicializado + primer commit.
@@ -224,7 +223,7 @@ Resultado esperado:
 - Base de datos: PostgreSQL
 - Redis: si
 - Solo API: no
-- Frontend: Inertia + Vue (via laravel/breeze, incluye paginas de auth)
+- Frontend: Inertia + Vue (via laravel/vue-starter-kit, incluye paginas de auth con Fortify)
 - Reverb: no
 - Octane: si (FrankenPHP)
 - Dockerfile usado: stubs/Dockerfile (con etapa de build de assets Node)
@@ -246,8 +245,8 @@ Nota: cuando usas flags, el wizard interactivo se omite para esas opciones y el 
 | --sqlite | Cambia DB a SQLite | .env.example.sqlite y compose dev sqlite |
 | --no-redis | Desactiva Redis | CACHE_STORE=database, SESSION_DRIVER=file, QUEUE_CONNECTION=database; sin servicio redis |
 | --api | API only | Ejecuta php artisan install:api (Sanctum); elimina Blade/Vite y omite routes/web.php |
-| --inertia-vue | Frontend Inertia + Vue | Ejecuta laravel/breeze vue; Dockerfile incluye build de assets con Node |
-| --inertia-react | Frontend Inertia + React | Ejecuta laravel/breeze react; Dockerfile incluye build de assets con Node |
+| --inertia-vue | Frontend Inertia + Vue | Proyecto base = laravel/vue-starter-kit (Fortify + Inertia); Dockerfile incluye build de assets con Node |
+| --inertia-react | Frontend Inertia + React | Proyecto base = laravel/react-starter-kit (Fortify + Inertia); Dockerfile incluye build de assets con Node |
 | --reverb | Habilita WebSockets Reverb | genera docker-compose.reverb.yml y agrega servicio reverb al levantar con -f extra |
 | --no-octane | Sin Octane | Dockerfile: stubs/Dockerfile.plain, comando app: php artisan serve |
 | --swoole | Octane con Swoole | Dockerfile: stubs/Dockerfile.swoole, comando app: octane:start --server=swoole |
@@ -281,7 +280,7 @@ Se incluye stubs/docker-compose.yml para despliegue con imagen de la app y red e
 
 ## Mantenimiento de versiones
 
-Los paquetes de Composer (Laravel, Octane, Breeze, Reverb, Larastan, Resend, Sentry) se instalan siempre sin version fijada, por lo que ya resuelven a la ultima version estable disponible.
+Los paquetes de Composer (Laravel, Octane, Reverb, Larastan, Resend, Sentry) se instalan siempre sin version fijada, por lo que ya resuelven a la ultima version estable disponible. Los starter kits de Inertia (laravel/vue-starter-kit, laravel/react-starter-kit) se instalan con `--stability=dev` porque su rama estable aun no soporta Laravel 13; revisa periodicamente si ya hay tag estable compatible para quitar ese flag.
 
 Las imagenes base de Docker si quedan fijadas a una version concreta (por estabilidad: un mayor de base de datos no debe cambiar solo sin que el desarrollador lo note). Version actual de cada pin:
 
