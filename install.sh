@@ -23,9 +23,20 @@ warn() { echo -e "  ${YELLOW}⚠${NC}  $1"; }
 
 # --- Interactive helpers (funcionan incluso piped desde curl) ---
 
+# Detecta si hay una terminal real detrás de /dev/tty. Sin esto, correr el
+# instalador sin tty (CI, contenedores, scripts de smoke-test) cuelga
+# indefinidamente en el primer read en vez de fallar rápido o usar defaults.
+has_tty() {
+  (exec 3<>/dev/tty) 2>/dev/null
+}
+
 # prompt: pregunta a usuario con opción de valor por defecto
 ask_input() {
   local prompt="$1" default="$2" answer
+  if ! has_tty; then
+    echo "$default"
+    return
+  fi
   if [ -n "$default" ]; then
     printf "  %s [%s]: " "$prompt" "$default" >/dev/tty
   else
@@ -38,6 +49,10 @@ ask_input() {
 # prompt: pregunta sí/no con opción por defecto (default: y)
 ask_yn() {
   local prompt="$1" default="${2:-y}" hint answer
+  if ! has_tty; then
+    [ "$default" = "y" ]
+    return
+  fi
   [ "$default" = "y" ] && hint="Y/n" || hint="y/N"
   printf "  %s [%s]: " "$prompt" "$hint" >/dev/tty
   read -r answer </dev/tty
@@ -50,6 +65,10 @@ ask_choice() {
   local prompt="$1" choice
   shift
   local options=("$@")
+  if ! has_tty; then
+    echo "1"
+    return
+  fi
   echo -e "  ${CYAN}$prompt${NC}" >/dev/tty
   for i in "${!options[@]}"; do
     printf "    ${DIM}%d)${NC} %s\n" "$((i+1))" "${options[$i]}" >/dev/tty
@@ -425,6 +444,16 @@ ok "Proyecto creado"
 # una herramienta opcional no debe borrarlo, solo se avisa y se continúa.
 trap - ERR
 
+# --- Paratest: requerido por el `--parallel` que usa `make test` ---
+# El skeleton base de Laravel no lo trae; sin esto, `php artisan test --parallel`
+# falla con "process-isolation of PHPUnit tests requires..." apenas se genera el proyecto.
+install_paratest() {
+  info "Instalando Paratest (requerido por 'make test' con --parallel)..."
+  composer require --dev brianium/paratest --quiet
+  ok "Paratest instalado"
+}
+run_optional "Paratest" install_paratest
+
 # --- Octane ---
 install_octane() {
   if [ "$USE_FRANKENPHP" = true ]; then
@@ -451,6 +480,10 @@ configure_api_only() {
   printf '<?php\n' > routes/web.php
   rm -f resources/views/welcome.blade.php vite.config.js package.json package-lock.json
   rm -rf resources/js resources/css
+  # El test por defecto de Laravel espera que GET / devuelva 200 (la vista welcome),
+  # pero routes/web.php queda vacío en modo API only — sin esto, `make test` falla
+  # con 404 apenas se genera el proyecto.
+  rm -f tests/Feature/ExampleTest.php
   ok "Sanctum instalado, proyecto configurado como solo-API (sin Blade ni Vite)"
 }
 if [ "$API_ONLY" = true ]; then
@@ -469,7 +502,14 @@ if [ "$USE_REVERB" = true ]; then
 fi
 
 # --- Pint & Larastan ---
+# laravel/vue-starter-kit y laravel/react-starter-kit ya traen Larastan +
+# phpstan.neon propios; solo hace falta instalarlo para la base laravel/laravel
+# (Blade / API only), que no lo incluye.
 install_quality_tools() {
+  if grep -q '"larastan/larastan"' composer.json; then
+    info "Larastan ya viene incluido en el starter kit — se omite instalación duplicada."
+    return 0
+  fi
   info "Instalando herramientas de calidad de código (Pint + Larastan)..."
   composer require --dev larastan/larastan --quiet
   cat > phpstan.neon << 'PHPSTAN'
@@ -485,6 +525,26 @@ PHPSTAN
   ok "Larastan instalado"
 }
 run_optional "Larastan" install_quality_tools
+
+# --- Scripts de composer para lint/análisis/CI (usados por el Makefile) ---
+# Los starter kits de Inertia ya definen lint/lint:check/types:check/ci:check
+# (mejor integrados con sus propios scripts de npm) — solo se agregan si faltan,
+# nunca se pisan los que ya trae el proyecto base.
+add_composer_quality_scripts() {
+  php -r '
+    $file = "composer.json";
+    $data = json_decode(file_get_contents($file), true);
+    $data["scripts"] += [
+      "lint" => "vendor/bin/pint",
+      "lint:check" => "vendor/bin/pint --test",
+      "types:check" => "vendor/bin/phpstan analyse --memory-limit=1G",
+      "ci:check" => ["@lint:check", "@types:check", "@test"],
+    ];
+    file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n");
+  '
+  ok "Scripts de calidad agregados a composer.json (lint, lint:check, types:check, ci:check)"
+}
+run_optional "Scripts de calidad (composer)" add_composer_quality_scripts
 
 # --- Resend ---
 install_resend() {
@@ -534,6 +594,34 @@ run_optional "docker/php/api-optimizations.ini" fetch_stub "docker/php/api-optim
 run_optional ".env.example" fetch_stub ".env.example" "$ENV_STUB" ".env.example"
 
 run_optional "Makefile" fetch_stub "Makefile" "Makefile"
+
+# --- Makefile: omite targets de frontend (format/format-check/types-check) ---
+# Solo laravel/vue-starter-kit y laravel/react-starter-kit traen Prettier +
+# type-check (vue-tsc/tsc) listos para usar. Blade (base laravel/laravel) y
+# API only no tienen esas herramientas, así que esos targets no aplican.
+prune_makefile_frontend() {
+  sed -i.bak \
+    -e '/# --- frontend:start/,/# --- frontend:end/d' \
+    -e 's/ format format-check types-check//' \
+    Makefile
+  rm -f Makefile.bak
+  ok "Makefile sin targets de frontend (sin Inertia+TS)"
+}
+if [ "$FRONTEND_STACK" != "inertia-vue" ] && [ "$FRONTEND_STACK" != "inertia-react" ]; then
+  run_optional "Makefile sin targets de frontend (sin Inertia+TS)" prune_makefile_frontend
+fi
+
+# --- phpunit.xml: fuerza APP_ENV=testing aunque Docker ya inyecte APP_ENV=local ---
+# PHPUnit no pisa una env var del SO que ya exista salvo que el <env> tenga
+# force="true". Sin esto, los tests dentro del contenedor dev corren con
+# APP_ENV=local (heredado de docker-compose.dev.yml) y el middleware CSRF no
+# se salta, dando falsos negativos en tests de features.
+harden_phpunit_env() {
+  sed -i.bak 's/<env name="APP_ENV" value="testing"\/>/<env name="APP_ENV" value="testing" force="true"\/>/' phpunit.xml
+  rm -f phpunit.xml.bak
+  ok "phpunit.xml: APP_ENV=testing forzado"
+}
+run_optional "phpunit.xml (APP_ENV forzado)" harden_phpunit_env
 
 if [ "$API_ONLY" = false ] && [ "$FRONTEND_STACK" = "blade" ]; then
   run_optional "routes/web.php" fetch_stub "routes/web.php" "routes/web.php" "routes/web.php"

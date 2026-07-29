@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Routing\Route;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Route as Router;
 use Illuminate\Support\Str;
 
@@ -51,7 +52,7 @@ class GenerateBrunoCollection extends Command
         return self::SUCCESS;
     }
 
-    private function watch(): int
+    private function watch(): never
     {
         $interval = (int) $this->option('interval');
         $snapshots = $this->snapshotRouteFiles();
@@ -114,7 +115,7 @@ class GenerateBrunoCollection extends Command
 
         $snapshot = [];
         foreach ($files as $file) {
-            $snapshot[$file] = filemtime($file);
+            $snapshot[$file] = (int) filemtime($file);
         }
 
         return $snapshot;
@@ -185,7 +186,8 @@ class GenerateBrunoCollection extends Command
         }
     }
 
-    private function getApiRoutes()
+    /** @return Collection<int, Route> */
+    private function getApiRoutes(): Collection
     {
         $prefix = $this->option('prefix');
 

@@ -7,7 +7,7 @@ GIT_CONFIG_USER_NAME  = {{GIT_USER_NAME}}
 GIT_CONFIG_USER_EMAIL = {{GIT_USER_EMAIL}}
 
 # Definición de tareas
-.PHONY: help up down restart status logs shell setup migrate fresh seed test install git-config install-hooks tag-list tag-patch tag-minor tag-major tag-push
+.PHONY: help up down restart status logs shell setup migrate fresh seed test install git-config install-hooks tag-list tag-patch tag-minor tag-major tag-push lint lint-check analyse format format-check types-check ci
 
 # Comando por defecto: Muestra la ayuda
 help:
@@ -24,6 +24,17 @@ help:
 	@echo "  make fresh     - Borra y recrea la base de datos con migraciones"
 	@echo "  make seed      - Ejecuta los seeders de Laravel"
 	@echo "  make test      - Ejecuta las pruebas automatizadas (Pest/PHPUnit)"
+	@echo ""
+	@echo "=== Calidad / CI (corrible manualmente, igual que el pipeline de CI) ==="
+	@echo "  make lint          - Corrige estilo de código (Pint)"
+	@echo "  make lint-check    - Verifica estilo de código sin corregir (Pint --test)"
+	@echo "  make analyse       - Análisis estático (Larastan/PHPStan)"
+	# --- frontend:start (requiere Inertia+Vue/React con TS; se omite en Blade y API only) ---
+	@echo "  make format        - Corrige formato del frontend (Prettier)"
+	@echo "  make format-check  - Verifica formato del frontend sin corregir"
+	@echo "  make types-check   - Verifica tipos del frontend (vue-tsc/tsc)"
+	# --- frontend:end ---
+	@echo "  make ci            - Corre el pipeline de CI en local (lint+analyse+tests)"
 	@echo ""
 	@echo "=== Git Tags (Versionado Semántico) ==="
 	@echo "  make tag-list  - Lista todos los tags existentes"
@@ -66,7 +77,32 @@ seed:
 	$(DOCKER_DEV) exec $(CONTAINER_API) php artisan db:seed
 
 test:
-	$(DOCKER_DEV) exec $(CONTAINER_API) php artisan test --parallel
+	$(DOCKER_DEV) exec -e APP_ENV=testing $(CONTAINER_API) php artisan test --parallel
+
+# ── Calidad / CI ────────────────────────────────────────────────────────────────
+
+lint:
+	$(DOCKER_DEV) exec $(CONTAINER_API) composer lint
+
+lint-check:
+	$(DOCKER_DEV) exec $(CONTAINER_API) composer lint:check
+
+analyse:
+	$(DOCKER_DEV) exec $(CONTAINER_API) composer types:check
+
+ci:
+	$(DOCKER_DEV) exec $(CONTAINER_API) composer ci:check
+
+# --- frontend:start (requiere Inertia+Vue/React con TS; se omite en Blade y API only) ---
+format:
+	$(DOCKER_DEV) exec $(CONTAINER_API) npm run format
+
+format-check:
+	$(DOCKER_DEV) exec $(CONTAINER_API) npm run format:check
+
+types-check:
+	$(DOCKER_DEV) exec $(CONTAINER_API) npm run types:check
+# --- frontend:end ---
 
 # ── Git ───────────────────────────────────────────────────────────────────────
 

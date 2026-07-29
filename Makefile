@@ -66,7 +66,7 @@ seed:
 	$(DOCKER_DEV) exec $(CONTAINER_API) php artisan db:seed
 
 test:
-	$(DOCKER_DEV) exec $(CONTAINER_API) php artisan test --parallel
+	$(DOCKER_DEV) exec -e APP_ENV=testing $(CONTAINER_API) php artisan test --parallel
 
 # ── Git Hooks ─────────────────────────────────────────────────────────────────
 

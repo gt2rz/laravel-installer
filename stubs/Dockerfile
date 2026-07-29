@@ -2,7 +2,8 @@ FROM dunglas/frankenphp AS base
 
 ADD --chmod=0755 https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN echo 'Acquire::Retries "5"; Acquire::http::Timeout "30";' > /etc/apt/apt.conf.d/80-retries \
+  && apt-get update && apt-get install -y --no-install-recommends \
   git \
   openssh-client \
   unzip \

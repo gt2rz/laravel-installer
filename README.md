@@ -274,6 +274,27 @@ Con Reverb:
 docker compose -f docker-compose.dev.yml -f docker-compose.reverb.yml up --build
 ```
 
+## Calidad de codigo / CI (make lint, make test, etc.)
+
+El `Makefile` generado trae, ademas de los comandos de desarrollo, un grupo de targets de calidad corribles en local (los mismos que correria un pipeline de CI):
+
+| Target | Que hace | Disponibilidad |
+| --- | --- | --- |
+| `make test` | `php artisan test --parallel` (via Paratest, instalado siempre por el instalador) | Todos los stacks |
+| `make lint` | Corrige estilo con Pint | Todos los stacks |
+| `make lint-check` | Verifica estilo sin corregir (`pint --test`) | Todos los stacks |
+| `make analyse` | Analisis estatico con Larastan/PHPStan | Todos los stacks |
+| `make ci` | Corre el pipeline completo (`composer ci:check`) | Todos los stacks |
+| `make format` | Corrige formato del frontend (Prettier) | Solo `--inertia-vue` / `--inertia-react` |
+| `make format-check` | Verifica formato del frontend sin corregir | Solo `--inertia-vue` / `--inertia-react` |
+| `make types-check` | Verifica tipos del frontend (`vue-tsc`/`tsc`) | Solo `--inertia-vue` / `--inertia-react` |
+
+Notas:
+
+- En Blade y `--api`, el proyecto base (`laravel/laravel`) no trae Prettier ni TypeScript, asi que el instalador omite automaticamente los targets `format`/`format-check`/`types-check` del `Makefile` (no tiene sentido ofrecerlos si van a fallar).
+- En `--inertia-vue`/`--inertia-react`, el proyecto base ya es `laravel/vue-starter-kit`/`laravel/react-starter-kit`, que ya vienen con Larastan, Pint, Prettier, ESLint y type-check configurados de fabrica — el instalador detecta esto y no pisa esos scripts, solo agrega los que falten (por ejemplo, en Blade/API only).
+- Todo esto corre dentro del contenedor Docker (`$(DOCKER_DEV) exec ...`), nunca en el host — sigue sin ser necesario tener Node/npm instalado localmente para generar o mantener el proyecto.
+
 ## Produccion (referencia)
 
 Se incluye stubs/docker-compose.yml para despliegue con imagen de la app y red externa dokploy-network.
@@ -302,6 +323,19 @@ Si haces fork, revisa estos valores en install.sh para apuntar a tu propio repos
 - BRANCH
 
 Tambien puedes modificar cualquier plantilla en stubs/ para adaptar Docker, extensiones PHP, variables de entorno o servicios.
+
+## Validar cambios al instalador (smoke-test)
+
+`install.sh` siempre descarga los stubs desde GitHub (`raw.githubusercontent.com`), nunca desde el disco local — asi que correrlo tal cual despues de editar `stubs/` o `install.sh` no prueba tus cambios sin commitear.
+
+`scripts/smoke-test.sh` sirve el repo local por HTTP y genera proyectos reales para una matriz de combinaciones (Blade, `--api`, `--inertia-vue`, `--inertia-react`), corriendo lint/analyse/test sobre cada uno. Varios bugs reales de este instalador (Paratest faltante, `phpstan.neon` pisado en los starter kits de Inertia, el test por defecto roto en modo `--api`) solo se detectaron generando un proyecto de verdad, no leyendo el codigo.
+
+```bash
+./scripts/smoke-test.sh                # corre todos los escenarios
+./scripts/smoke-test.sh blade api       # corre solo los escenarios nombrados
+```
+
+Requiere los mismos binarios que `install.sh` (composer, curl, git, php) mas `python3` para el servidor HTTP local. No usa Docker ni npm.
 
 ## Troubleshooting rapido
 
